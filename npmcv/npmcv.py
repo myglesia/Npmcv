@@ -8,16 +8,17 @@ from itertools import zip_longest
 import mahotas as mh
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 from PIL import Image
-from scipy import stats
+from scipy import stats, misc
 from scipy import ndimage as ndi
 from skimage.measure import regionprops
 from skimage.filters import gaussian, threshold_li
 
 
 def main(argv):
-    '''cvr <directory>
+    '''npmcv <directory>
     DAPI and NPM1 channels from a microscope image must be split into separate tif files. Files should be listed sequentially.
 
     e.g. "Image01_dapi.tif", "Image01_npm.tif", "Image02_dapi.tif", "Image02_npm.tif",...
@@ -60,11 +61,22 @@ def ssp(dapi, npm1):
         if label is None:
             results.append(0)
         else:
-            npm1 = bg_correction(raw_npm1)
-            cells = img2cells(label, npm1)
-            for cell, mask in cells:
-                results.append(stats.variation(cell[mask], axis=None))
+            corr_npm1 = bg_correction(raw_npm1)
+            cells = img2cells(label, corr_npm1)
+            for i, (cell, mask) in enumerate(cells):
+                cv = stats.variation(cell[mask], axis=None)
+                results.append(cv)
+                if cv > 0.75:
+                    verb(i, cell, mask, os.path.basename(npm1))
+
     return results
+
+
+def verb(i, cell, mask, basename):
+    img = np.zeros(cell.shape, dtype=cell.dtype)
+    img[:, :] = mask * cell
+    name = '{0}_c{1}.tif'.format(basename, i)
+    misc.toimage(img).save(name)
 
 
 def cell_segmentation(img):
@@ -114,11 +126,11 @@ def img2cells(labeled, npm):
     Returns a zip array of cell images and masks'''
     cropped_images = []
     cropped_binary = []
-    m = labeled[:, :] > 0  # convert to binary image
-    mask = ndi.binary_fill_holes(m)
 
     for region in regionprops(labeled):
         minr, minc, maxr, maxc = region.bbox
+        m = labeled[:, :] == region.label
+        mask = ndi.binary_fill_holes(m)
         cropped_images.append(npm[minr:maxr, minc:maxc])
         cropped_binary.append(mask[minr:maxr, minc:maxc])
 

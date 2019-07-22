@@ -67,15 +67,17 @@ def ssp(dapi, npm1):
                 cv = stats.variation(cell[mask], axis=None)
                 results.append(cv)
                 if cv > 0.75:
-                    verb(i, cell, mask, os.path.basename(npm1))
+                    verb(i, cell, mask, npm1)
 
     return results
 
 
-def verb(i, cell, mask, basename):
+def verb(i, cell, mask, ppath):
     img = np.zeros(cell.shape, dtype=cell.dtype)
     img[:, :] = mask * cell
-    name = '{0}_c{1}.tif'.format(basename, i)
+
+    name = os.path.dirname(ppath) + '/in_cells/{0}_c{1}.tif'.format(os.path.basename(ppath), i)
+    os.makedirs(os.path.dirname(name), exist_ok=True)
     misc.toimage(img).save(name)
 
 

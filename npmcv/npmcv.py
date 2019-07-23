@@ -8,7 +8,6 @@ from itertools import zip_longest
 import mahotas as mh
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 from PIL import Image
 from scipy import stats, misc
@@ -76,7 +75,8 @@ def verb(i, cell, mask, ppath):
     img = np.zeros(cell.shape, dtype=cell.dtype)
     img[:, :] = mask * cell
 
-    name = os.path.dirname(ppath) + '/in_cells/{0}_c{1}.tif'.format(os.path.basename(ppath), i)
+    name = os.path.dirname(
+        ppath) + '/in_cells/{0}_c{1}.tif'.format(os.path.basename(ppath), i)
     os.makedirs(os.path.dirname(name), exist_ok=True)
     misc.toimage(img).save(name)
 

@@ -3,7 +3,9 @@
 import sys
 import os
 import time
+import re
 from itertools import zip_longest
+from collections import defaultdict
 
 import mahotas as mh
 import pandas as pd
@@ -23,32 +25,48 @@ def main(argv):
     e.g. "Image01_dapi.tif", "Image01_npm.tif", "Image02_dapi.tif", "Image02_npm.tif",...
     '''
     t = time.process_time()
-    directory = argv[1]
+    directory = argv
 
     img_files = sorted([f for f in os.listdir(directory)
                         if f.endswith('.tif')], key=lambda f: f.lower())
 
-    results = {}
+    pattern = re.compile(r"(?P<slide>.*)\.lif.*")
+    raw_results = defaultdict(list)
     for dapi, npm1 in grouper(img_files, 2):
-        img_voc = ssp(os.path.join(directory, dapi),
+        img_voc = sip(os.path.join(directory, dapi),
                       os.path.join(directory, npm1))
-        results[npm1] = img_voc
+        r = pattern.match(npm1)
+        raw_results[r.group(1)].extend(img_voc)
 
-    df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in results.items()]))
+    results, outliers = remove_outliers(raw_results)
+
+
+    # handling save files
+    file_name = os.path.basename(os.path.abspath(directory))
+
+    def dtdf(d): return pd.DataFrame(dict([(k, pd.Series(v)) for k, v in d.items()]))
+
+    df = dtdf(results)
+    df.to_csv('{}.csv'.format(file_name), index=False)
+    dtdf(raw_results).to_csv('{}_RAW.csv'.format(file_name), index=False)
+    dtdf(outliers).to_csv('{}_OUT.csv'.format(file_name), index=False)
+
     print('\x1b[1;36m' +
           ' {n} Cells Counted.'.format(n=str(sum(df.count())) + '\x1b[0m'))
 
-    file_name = os.path.basename(os.path.abspath(directory))
-    df.to_csv('{}.csv'.format(file_name), index=False)
-
     elapsed_time = (time.process_time() - t) / 60
     print('\x1b[1;32m' +
-          'Total Runtime: {n} mins.'.format(n=elapsed_time) + '\x1b[0m')
+          'Total Runtime: {:.4} mins.'.format(elapsed_time) + '\x1b[0m')
 
 
-def ssp(dapi, npm1):
-    '''Single slide Processing
-    Returns array of stats for one slide'''
+def sip(dapi, npm1):
+    '''Single image Processing
+
+    Returns
+    -------
+        results:    list
+            list of stats for one image
+    '''
     print('\x1b[4m' + 'Processing: {}'.format(os.path.basename(npm1)) + '\x1b[0m')
     with Image.open(dapi) as d, Image.open(npm1) as n:
         raw_dapi = np.array(Image.open(dapi))
@@ -58,7 +76,7 @@ def ssp(dapi, npm1):
 
         results = []
         if label is None:
-            results.append(0)
+            results.append(np.nan)
         else:
             corr_npm1 = bg_correction(raw_npm1)
             cells = img2cells(label, corr_npm1)
@@ -66,7 +84,8 @@ def ssp(dapi, npm1):
                 cv = stats.variation(cell[mask], axis=None)
                 results.append(cv)
                 if cv > 0.75:
-                    verb(i, cell, mask, npm1)
+                    #verb(i, cell, mask, npm1)
+                    continue
 
     return results
 
@@ -84,7 +103,13 @@ def verb(i, cell, mask, ppath):
 def cell_segmentation(img):
     '''Prepares a mask labeling each cell in the DAPI images,
     removing artifacts and cut off cells.
-    Returns a labeled binary slide image'''
+
+    Returns
+    -------
+    cleaned:    label
+        labeled binary image for a single slide
+    '''
+
 
     # Li Threshold...
     im = gaussian(img.astype(float), sigma=5)  # time!
@@ -111,7 +136,10 @@ def bg_correction(img):
     '''Background correction for NPM1 image
     Subtracts the mean background intensity from the entire image
 
-    Returns corrected image
+    Returns
+    -------
+    corrected:  ndarray
+
     '''
     im = gaussian(img.astype(float), sigma=10)  # time!
     bin_image = (im > threshold_li(im))
@@ -125,18 +153,21 @@ def bg_correction(img):
 
 def img2cells(labeled, npm):
     '''Separates cells in NPM1 image based on labeled mask from DAPI image
-    Returns a zip array of cell images and masks'''
-    cropped_images = []
-    cropped_binary = []
+    Returns
+    -------
+        (cropped_images, cropped_binary):    zip
+    '''
+    cropped_img = []
+    cropped_bin = []
 
     for region in regionprops(labeled):
         minr, minc, maxr, maxc = region.bbox
         m = labeled[:, :] == region.label
         mask = ndi.binary_fill_holes(m)
-        cropped_images.append(npm[minr:maxr, minc:maxc])
-        cropped_binary.append(mask[minr:maxr, minc:maxc])
+        cropped_img.append(npm[minr:maxr, minc:maxc])
+        cropped_bin.append(mask[minr:maxr, minc:maxc])
 
-    return zip(cropped_images, cropped_binary)
+    return zip(cropped_img, cropped_bin)
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -146,6 +177,53 @@ def grouper(iterable, n, fillvalue=None):
     args = [iter(iterable)] * n
     return zip_longest(*args, fillvalue=fillvalue)
 
+def remove_outliers(results):
+    clean_results = {}
+    outliers = {}
+    for key ,val in results.items():
+        clean, out = grubbs(val)
+        clean_results[key] = clean
+        outliers[key] = out
+
+    return clean_results, outliers
+
+
+def grubbs(X, alpha=0.05):
+    '''
+    Performs Grubbs' test for outliers recursively until the null hypothesis is
+    true.
+    Parameters
+    ----------
+    X : ndarray
+        A numpy array to be tested for outliers.
+    alpha : float
+        The significance level.
+    Returns
+    -------
+    X : ndarray
+        The original array with outliers removed.
+    outliers : ndarray
+        An array of outliers.
+    '''
+    Z = stats.zscore(X, ddof=1)  # returns ndarray of Z-score
+    N = len(X)
+
+    def G(Z): return np.abs(Z).argmax()  # returns indices of min values
+    def t_crit(N): return stats.t.isf(alpha / (2. * N), N - 2)
+    def G_crit(N): return (N - 1.) / np.sqrt(N) * \
+        np.sqrt(t_crit(N)**2 / (N - 2 + t_crit(N)**2))
+
+    outliers = np.array([])
+    while np.amax(np.abs(Z)) > G_crit(N):
+        # update the outliers
+        outliers = np.r_[outliers, X[G(Z)]]
+        # remove outlier from array
+        X = np.delete(X, G(Z))
+        # repeat Z score
+        Z = stats.zscore(X, ddof=1)
+        N = len(X)
+
+    return X, outliers
 
 if __name__ == '__main__':
     main(sys.argv)

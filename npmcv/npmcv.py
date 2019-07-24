@@ -38,20 +38,22 @@ def main(argv):
 
     results, outliers = remove_outliers(raw_results)
 
-
     # handling save files
     file_name = os.path.basename(os.path.abspath(directory))
 
-    def dtdf(d): return pd.DataFrame(dict([(k, pd.Series(v)) for k, v in d.items()]))
+    def dtdf(d): return pd.DataFrame(
+        dict([(k, pd.Series(v)) for k, v in d.items()]))
 
     df = dtdf(results)
     df.to_csv('{}.csv'.format(file_name), index=False)
     dtdf(raw_results).to_csv('{}_RAW.csv'.format(file_name), index=False)
     dtdf(outliers).to_csv('{}_OUT.csv'.format(file_name), index=False)
 
+    print('\n')
     print('\x1b[1;36m' +
-          ' {n} Cells Counted.'.format(n=str(sum(df.count())) + '\x1b[0m'))
-
+          ' Experiment {0} Completed!.'.format(file_name) + '\x1b[0m')
+    print('\x1b[1;36m' + ' {n} '.format(n=str(sum(df.count()))) + '\x1b[0m' +
+          'Cells Counted.')
 
 
 def sip(dapi, npm1):
@@ -105,7 +107,6 @@ def cell_segmentation(img):
         labeled binary image for a single slide
     '''
 
-
     # Li Threshold...
     im = gaussian(img.astype(float), sigma=5)  # time!
     bin_image = (im > threshold_li(im))
@@ -118,7 +119,7 @@ def cell_segmentation(img):
     print("Segmentation Calculation...")
 
     print('Final Number of cells: ' +
-          '\x1b[3;31m' + '{}'.format(n_left) + '\x1b[0m')
+          '\x1b[3;31m' + '{}\n'.format(n_left) + '\x1b[0m')
     # print('Done!\n')
 
     if n_left == 0:
@@ -172,10 +173,12 @@ def grouper(iterable, n, fillvalue=None):
     args = [iter(iterable)] * n
     return zip_longest(*args, fillvalue=fillvalue)
 
+
 def remove_outliers(results):
     clean_results = {}
     outliers = {}
-    for key ,val in results.items():
+    for key, val in results.items():
+        val = [x for x in val if not np.isnan(x)] # remove 'NaN'
         clean, out = grubbs(val)
         clean_results[key] = clean
         outliers[key] = out
@@ -203,14 +206,13 @@ def grubbs(X, alpha=0.05):
     Z = stats.zscore(X, ddof=1)  # returns ndarray of Z-score
     N = len(X)
 
-    def G(Z): return np.abs(Z).argmax()  # returns indices of min values
+    def G(Z): return np.abs(Z).argmax()  # returns indices of max values
     def t_crit(N): return stats.t.isf(alpha / (2. * N), N - 2)
     def G_crit(N): return (N - 1.) / np.sqrt(N) * \
         np.sqrt(t_crit(N)**2 / (N - 2 + t_crit(N)**2))
 
     outliers = np.array([])
     while np.amax(np.abs(Z)) > G_crit(N):
-        # update the outliers
         outliers = np.r_[outliers, X[G(Z)]]
         # remove outlier from array
         X = np.delete(X, G(Z))
@@ -218,7 +220,10 @@ def grubbs(X, alpha=0.05):
         Z = stats.zscore(X, ddof=1)
         N = len(X)
 
+    print(outliers)
+
     return X, outliers
+
 
 if __name__ == '__main__':
     main(sys.argv)

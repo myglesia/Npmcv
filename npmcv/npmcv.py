@@ -2,7 +2,6 @@
 
 import sys
 import os
-import time
 import re
 from itertools import zip_longest
 from collections import defaultdict
@@ -24,7 +23,6 @@ def main(argv):
 
     e.g. "Image01_dapi.tif", "Image01_npm.tif", "Image02_dapi.tif", "Image02_npm.tif",...
     '''
-    t = time.process_time()
     directory = argv
 
     img_files = sorted([f for f in os.listdir(directory)
@@ -54,9 +52,6 @@ def main(argv):
     print('\x1b[1;36m' +
           ' {n} Cells Counted.'.format(n=str(sum(df.count())) + '\x1b[0m'))
 
-    elapsed_time = (time.process_time() - t) / 60
-    print('\x1b[1;32m' +
-          'Total Runtime: {:.4} mins.'.format(elapsed_time) + '\x1b[0m')
 
 
 def sip(dapi, npm1):

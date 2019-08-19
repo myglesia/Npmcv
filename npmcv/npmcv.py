@@ -13,8 +13,12 @@ import numpy as np
 from PIL import Image
 from scipy import stats, misc
 from scipy import ndimage as ndi
+from skimage.util import img_as_float
 from skimage.measure import regionprops
 from skimage.filters import gaussian, threshold_li
+
+from skimage import color
+import matplotlib.pyplot as plt
 
 
 def main(argv):
@@ -30,11 +34,13 @@ def main(argv):
 
     pattern = re.compile(r"(?P<slide>.*)\.lif.*")
     raw_results = defaultdict(list)
+    spt_results = {}
     for dapi, npm1 in grouper(img_files, 2):
         img_voc = sip(os.path.join(directory, dapi),
                       os.path.join(directory, npm1))
         r = pattern.match(npm1)
         raw_results[r.group(1)].extend(img_voc)
+        spt_results[npm1] = img_voc
 
     results, outliers = remove_outliers(raw_results)
 
@@ -48,12 +54,15 @@ def main(argv):
     df.to_csv('{}.csv'.format(file_name), index=False)
     dtdf(raw_results).to_csv('{}_RAW.csv'.format(file_name), index=False)
     dtdf(outliers).to_csv('{}_OUT.csv'.format(file_name), index=False)
+    dtdf(spt_results).to_csv('{}_SPLIT.csv'.format(file_name), index=False)
 
     print('\n')
     print('\x1b[1;36m' +
           ' Experiment {0} Completed!.'.format(file_name) + '\x1b[0m')
+    print('\x1b[1;30m' +
+          ' {n} '.format(n=len(spt_results)) + '\x1b[0m' + 'Images Analyzed,', end='')
     print('\x1b[1;36m' + ' {n} '.format(n=str(sum(df.count()))) + '\x1b[0m' +
-          'Cells Counted.')
+          'Cells Counted.\n')
 
 
 def sip(dapi, npm1):
@@ -75,14 +84,15 @@ def sip(dapi, npm1):
         if label is None:
             results.append(np.nan)
         else:
-            corr_npm1 = bg_correction(raw_npm1)
-            cells = img2cells(label, corr_npm1)
+            check(label, raw_npm1, npm1)
+            cells = img2cells(label, raw_npm1)
+            print("Calculation CVs...")
             for i, (cell, mask) in enumerate(cells):
                 cv = stats.variation(cell[mask], axis=None)
                 results.append(cv)
-                if cv > 0.75:
-                    #verb(i, cell, mask, npm1)
-                    continue
+                #if cv > 0.75:
+                #    verb(i, cell, mask, npm1)
+                #    continue
 
     return results
 
@@ -92,9 +102,9 @@ def verb(i, cell, mask, ppath):
     img[:, :] = mask * cell
 
     name = os.path.dirname(
-        ppath) + '/in_cells/{0}_c{1}.tif'.format(os.path.basename(ppath), i)
+        ppath) + '/in_cells/{0}_c{1}.png'.format(os.path.basename(ppath), i)
     os.makedirs(os.path.dirname(name), exist_ok=True)
-    misc.toimage(img).save(name)
+    plt.imsave(name, img)
 
 
 def cell_segmentation(img):
@@ -107,20 +117,18 @@ def cell_segmentation(img):
         labeled binary image for a single slide
     '''
 
+    print("Segmentation Calculation...")
     # Li Threshold...
-    im = gaussian(img.astype(float), sigma=5)  # time!
+    im = gaussian(img_as_float(img), sigma=1)  # time!
     bin_image = (im > threshold_li(im))
     labeled, nr_objects = mh.label(bin_image)
 
     # NOTE Change these values first
     cleaned, n_left = mh.labeled.filter_labeled(
-        labeled, remove_bordering=True, min_size=10000, max_size=25000)
-
-    print("Segmentation Calculation...")
+        labeled, remove_bordering=True, min_size=10000, max_size=30000)
 
     print('Final Number of cells: ' +
           '\x1b[3;31m' + '{}\n'.format(n_left) + '\x1b[0m')
-    # print('Done!\n')
 
     if n_left == 0:
         return None
@@ -128,23 +136,19 @@ def cell_segmentation(img):
         return cleaned
 
 
-def bg_correction(img):
-    '''Background correction for NPM1 image
-    Subtracts the mean background intensity from the entire image
+def check(label, img, ppath):
 
-    Returns
-    -------
-    corrected:  ndarray
+    rgbimg = color.label2rgb(label, img, alpha=0.2,
+                             bg_label=0, bg_color=(0, 0, 0))
 
-    '''
-    im = gaussian(img.astype(float), sigma=10)  # time!
-    bin_image = (im > threshold_li(im))
-    background_mean = img[bin_image == 0].mean()
+    name = os.path.dirname(
+        ppath) + '/dapi_seg/{0}_segments.png'.format(os.path.basename(ppath))
+    os.makedirs(os.path.dirname(name), exist_ok=True)
 
-    # Type change required for saturation
-    corrected = (img.astype(np.float) - int(background_mean)).clip(min=0)
+    print('Segmentation Image saved: ' +
+          '\x1b[4m' + '{}\n'.format(name) + '\x1b[0m')
 
-    return corrected
+    plt.imsave(name, rgbimg)
 
 
 def img2cells(labeled, npm):
@@ -178,7 +182,7 @@ def remove_outliers(results):
     clean_results = {}
     outliers = {}
     for key, val in results.items():
-        val = [x for x in val if not np.isnan(x)] # remove 'NaN'
+        val = [x for x in val if not np.isnan(x)]  # remove 'NaN'
         clean, out = grubbs(val)
         clean_results[key] = clean
         outliers[key] = out
@@ -219,8 +223,6 @@ def grubbs(X, alpha=0.05):
         # repeat Z score
         Z = stats.zscore(X, ddof=1)
         N = len(X)
-
-    print(outliers)
 
     return X, outliers
 

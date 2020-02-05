@@ -25,14 +25,19 @@ def main(argv):
     '''npmcv <directory>
     DAPI and NPM1 channels from a microscope image must be split into separate tif files. Files should be listed sequentially.
 
-    e.g. "Image01_dapi.tif", "Image01_npm.tif", "Image02_dapi.tif", "Image02_npm.tif",...
+    e.g. "Image01.dapi.tif", "Image01.npm.tif", "Image02.dapi.tif",
+    "Image02.npm.tif",...
     '''
     directory = argv
 
     img_files = sorted([f for f in os.listdir(directory)
                         if f.endswith('.tif')], key=lambda f: f.lower())
 
-    pattern = re.compile(r"(?P<slide>.*)\.lif.*")
+    # Like the form:
+    # ActD.lif - Image002_ch01.tif 
+    # ActD.lif - Image002_ch02.tif 
+
+    pattern = re.compile(r"(?P<slide>.*)\.*")
     raw_results = defaultdict(list)
     spt_results = {}
     for dapi, npm1 in grouper(img_files, 2):
@@ -89,10 +94,8 @@ def sip(dapi, npm1):
             print("Calculation CVs...")
             for i, (cell, mask) in enumerate(cells):
                 cv = stats.variation(cell[mask], axis=None)
+                verb(i, cell, mask, npm1)
                 results.append(cv)
-                #if cv > 0.75:
-                #    verb(i, cell, mask, npm1)
-                #    continue
 
     return results
 

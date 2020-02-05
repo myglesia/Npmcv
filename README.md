@@ -1,13 +1,13 @@
 
 
-##Installation
+## Installation
 
 change cwd to `Npmcv`
 ```
 $ python setup.py build
 $ python setup.py install
 ```
-##How to use
+## How to use
 
 ```
 Usage:

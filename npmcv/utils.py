@@ -8,6 +8,26 @@ Some functions that are currently not used
 but might be useful
 '''
 
+def dvextractor(directory):
+    '''
+    directly extracts images from the deltavision file type
+    requires mirc
+    '''
+    import mrc
+    import numpy as np
+
+    img_files = sorted([f for f in os.listdir(directory)
+                        if f.endswith('.dv')], key=lambda f: f.lower())
+
+    for im in img_files:
+        dv = mrc.imread(im) 
+
+        # Expecting a 4D numpy array (z,c,x,y) 
+        # the second number indicates the "channel" 0 = dapi, 1 = npm  
+
+        raw_dapi = im[0][0]
+        raw_npm1 = im[0][1]
+
 
 def img_counter(imgs):
     '''Determines how many Images were taken per slide

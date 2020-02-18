@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from scipy import stats, misc
 from scipy import ndimage as ndi
+from skimage import exposure
 from skimage.util import img_as_float
 from skimage.measure import regionprops
 from skimage.filters import gaussian, threshold_li
@@ -131,6 +132,7 @@ def sip(raw_dapi, raw_npm1, name):
     if label is None:
         results.append(np.nan)
     else:
+        raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
         check(label, raw_npm1, name)
         cells = img2cells(label, raw_npm1)
         print("Calculating CVs...")
@@ -153,6 +155,7 @@ def cell_segmentation(img):
 
     print("Segmentation Calculation...")
     # Li Threshold...
+    #fim = exposure.equalize_hist(img_as_float(img))
     im = gaussian(img_as_float(img), sigma=1)  # time!
     bin_image = (im > threshold_li(im))
     labeled, nr_objects = mh.label(bin_image)
@@ -229,9 +232,10 @@ def remove_outliers(results):
     outliers = {}
     for key, val in results.items():
         val = [x for x in val if not np.isnan(x)]  # remove 'NaN'
-        clean, out = grubbs(val)
-        clean_results[key] = clean
-        outliers[key] = out
+        if val:
+            clean, out = grubbs(val)
+            clean_results[key] = clean
+            outliers[key] = out
 
     return clean_results, outliers
 

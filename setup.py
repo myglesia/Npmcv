@@ -18,7 +18,7 @@ URL = 'https://github.com/me/myproject'
 EMAIL = 'me@example.com'
 AUTHOR = 'me'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.5.31a20200218'
+VERSION = '0.5.32a20200505'
 
 # What packages are required for this module to be executed?
 REQUIRED = ['mahotas', 'pandas', 'scipy', 'scikit-image', 'Pillow', 'mrc']

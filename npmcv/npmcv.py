@@ -45,22 +45,25 @@ def dv(img_files):
     # This regex stuff can't be done unless original file names are strictly controlled
     #pattern = re.compile(r"(?P<trial>^.+)\.(?P<ext>.+$)")
 
-def tiff(img_files):
+def tif(img_files):
     '''
     return raw results: {'img': [CVs]}
     '''
 
+    PATTERN = re.compile(r"^HCP-\d-\d{4}-p-(?P<time>.*?)-(?P<treat>.*)-s(?P<slide>\d).*(?P<img>Image.*)_(?P<ch>ch\d{2}).tif")
+
+
     results = {}
 
     for dapi, npm1 in grouper(img_files, 2):
-        print('\x1b[4m' + 'Processing: {}'.format(npm1) + '\x1b[0m')
+        print('\x1b[4m' + 'Processing: {} '.format(npm1) + '\x1b[0m')
         with Image.open(dapi) as d, Image.open(npm1) as n:
             raw_dapi = np.array(Image.open(dapi))
             raw_npm1 = np.array(Image.open(npm1))
 
-            img_voc = sip(raw_dapi, raw_npm1, os.path.basename(im))
+            img_cv = sip(raw_dapi, raw_npm1, os.path.basename(npm1))
             # single image per column
-            results[os.path.basename(im)] = img_cv
+            results[os.path.basename(npm1)] = img_cv
 
     return results
 
@@ -86,8 +89,10 @@ def main(argv):
     img_files = sorted([os.path.join(directory, f) for f in os.listdir(directory)
                         if f.endswith(filetype) and not f.startswith('.')], key=lambda f: f.lower())
 
-    raw_results = dv(img_files)
-
+    if filetype == 'dv':
+        raw_results = dv(img_files)
+    if filetype == 'tif':
+        raw_results = tif(img_files)
     # BETTER MATCHING
     #pattern = re.compile(r"(?P<slide>.*)\.*")
     #raw_results = defaultdict(list)

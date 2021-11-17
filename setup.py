@@ -18,7 +18,7 @@ URL = 'https://github.com/me/myproject'
 EMAIL = 'me@example.com'
 AUTHOR = 'Matthew Yglesias'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.7.20211112'
+VERSION = '1.0.2'
 
 # What packages are required for this module to be executed?
 REQUIRED = ['matplotlib','mahotas', 'numpy', 'pandas', 'scipy',

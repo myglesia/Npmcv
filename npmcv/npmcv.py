@@ -18,18 +18,16 @@ from skimage.util import img_as_float
 from skimage.measure import regionprops
 from skimage.filters import gaussian, threshold_li
 
-from . import test 
 
 def main(argv):
     '''npmcv <directory>
-    DAPI and NPM1 channels from a microscope image must be split into separate 
+    DAPI and NPM1 channels from a microscope image must be split into separate
     single channel tif files and should be listed sequentially.
 
     e.g. "Image01.dapi.tif", "Image01.npm.tif", "Image02.dapi.tif",
     "Image02.npm.tif",...
     '''
-    #directory = argv[0]
-    directory = "/Users/Matthew/Dropbox/SchoolDoc/Npmcv/_tesimg"
+    directory = argv[0]
     # this is where everything will save
     os.chdir(directory)
 
@@ -58,9 +56,10 @@ def main(argv):
     # Final Stats
     print('\n')
     print('\x1b[1;36m' +
-          ' Experiment {0} Completed!.'.format(exp_name) + '\x1b[0m')
+          'Experiment {0} Completed!.'.format(exp_name) + '\x1b[0m')
     print('\x1b[1;36m' + ' {n} '.format(n=str(sum(df.count()))) + '\x1b[0m' +
-          'Cells Counted.\n')
+          'Total Cells Counted.')
+
 
 def tif(img_files):
     '''Handles opening image files.
@@ -70,13 +69,14 @@ def tif(img_files):
     raw results:    {'img': [CVs]}
     '''
     # Cursed regex
-    PATTERN = re.compile(r"^HCP-\d-\d{4}-p-(?P<time>.*?)-(?P<treat>.*)-s(?P<slide>\d).*(?P<img>Image.*)_(?P<ch>ch\d{2}).tif")
+    PATTERN = re.compile(
+        r"^HCP-\d-\d{4}-p-(?P<time>.*?)-(?P<treat>.*)-s(?P<slide>\d).*(?P<img>Image.*)_(?P<ch>ch\d{2}).tif")
     results = {}
 
     for dapi, npm1 in grouper(img_files, 2):
-        print('\x1b[4m' + 'Processing: {} '.format(os.path.basename(npm1)) + '\x1b[0m')
-
         with Image.open(dapi) as d, Image.open(npm1) as n:
+            print(
+                '\x1b[4m' + 'Processing: {} '.format(os.path.basename(npm1)) + '\x1b[0m')
             raw_dapi = np.array(Image.open(dapi))
             raw_npm1 = np.array(Image.open(npm1))
 
@@ -85,6 +85,7 @@ def tif(img_files):
             results[os.path.basename(npm1)] = img_cv
 
     return results
+
 
 def sip(raw_dapi, raw_npm1, name):
     '''Single image Processing - The Images are actually opened here
@@ -101,7 +102,6 @@ def sip(raw_dapi, raw_npm1, name):
     if label is None:
         results.append(np.nan)
     else:
-        print("Calculating CVs...")
         raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
         check(label, raw_npm1, name)
         cells = img2cells(label, raw_npm1)
@@ -109,19 +109,18 @@ def sip(raw_dapi, raw_npm1, name):
             cv = stats.variation(cell[mask], axis=None)
             verb(i, cell, mask, name)
             results.append(cv)
-
     return results
+
 
 def cell_segmentation(img):
     '''Prepares a mask labeling each cell in the DAPI images,
-    removing artifacts and cells touching the edges. 
+    removing artifacts and cells touching the edges.
 
     Returns
     -------
     cleaned:    label
         labeled binary image for a single slide
     '''
-    print("Segmentation Calculation...")
     # Li Threshold...
     im = gaussian(img_as_float(img), sigma=1)  # time!
     bin_image = (im > threshold_li(im))
@@ -131,7 +130,7 @@ def cell_segmentation(img):
     cleaned, n_left = mh.labeled.filter_labeled(
         labeled, remove_bordering=True, min_size=10000, max_size=30000)
 
-    print('Final Number of cells: ' +
+    print('\nNumber of cells counted: ' +
           '\x1b[3;31m' + '{}'.format(n_left) + '\x1b[0m')
 
     if n_left == 0:
@@ -147,7 +146,9 @@ def verb(i, cell, mask, name):
     img[:, :] = mask * cell
 
     os.makedirs('inv_cells', exist_ok=True)
-    plt.imsave(os.path.join(os.getcwd(),'inv_cells','{0}_cell{1}.png'.format(name, i)), img)
+    plt.imsave(os.path.join(os.getcwd(), 'inv_cells',
+               '{0}_cell{1}.png'.format(name, i)), img)
+
 
 def check(label, img, name):
     '''
@@ -158,12 +159,12 @@ def check(label, img, name):
     rgbimg = color.label2rgb(label, img, alpha=0.2,
                              bg_label=0, bg_color=(0, 0, 0))
 
-
     os.makedirs('dapi_seg', exist_ok=True)
-    newname = os.path.join(os.getcwd(),'dapi_seg','{0}_seg.png'.format(name))
-    plt.imsave(os.path.join(os.getcwd(),'dapi_seg','{0}_seg.png'.format(name)), rgbimg)
+    newname = os.path.join(os.getcwd(), 'dapi_seg', '{0}_seg.png'.format(name))
+    plt.imsave(os.path.join(os.getcwd(), 'dapi_seg',
+               '{0}_seg.png'.format(name)), rgbimg)
 
-    print('Segmentation Image saved: ' +
+    print('\nSegmentation Image saved: ' +
           '\x1b[4m' + '{}\n'.format(newname) + '\x1b[0m')
 
 
@@ -231,6 +232,7 @@ def grubbs(X, alpha=0.05):
 
     def G(Z): return np.abs(Z).argmax()  # returns indices of max values
     def t_crit(N): return stats.t.isf(alpha / (2. * N), N - 2)
+
     def G_crit(N): return (N - 1.) / np.sqrt(N) * \
         np.sqrt(t_crit(N)**2 / (N - 2 + t_crit(N)**2))
 

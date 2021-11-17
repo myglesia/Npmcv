@@ -13,15 +13,16 @@ from setuptools import find_packages, setup, Command
 
 # Package meta-data.
 NAME = 'npmcv'
-DESCRIPTION = 'My short description for my project.'
+DESCRIPTION = 'Script for calculating CV from cell images.'
 URL = 'https://github.com/me/myproject'
 EMAIL = 'me@example.com'
-AUTHOR = 'me'
+AUTHOR = 'Matthew Yglesias'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.5.32a20200505'
+VERSION = '0.7.20211112'
 
 # What packages are required for this module to be executed?
-REQUIRED = ['mahotas', 'pandas', 'scipy', 'scikit-image', 'Pillow', 'mrc']
+REQUIRED = ['matplotlib','mahotas', 'numpy', 'pandas', 'scipy',
+    'scikit-image', 'Pillow']
 
 # What packages are optional?
 EXTRAS = {

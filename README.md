@@ -4,10 +4,15 @@ A Python script for segmenting cells in microscope images and calculating the co
 
 ## Installation
 
-change cwd to `Npmcv`
+Windows
+```
+$ python -m build
+$ pip install
+```
+Mac
 ```
 $ python setup.py build
-$ python setup.py install
+$ python3 setup.py install 
 ```
 ## How to use
 
@@ -15,7 +20,7 @@ $ python setup.py install
 Usage:
     npmcv [<directory>...]
 ```
-where <directory> is a one or more folders containing tif images.
+where <directory> is a one or more folders containing `.lif` images.
 
 ```
 Outputs:
@@ -23,7 +28,8 @@ Outputs:
    <directory>_RAW.csv: output data without outliners removed  
    <directory>_OUT.csv: the outliners removed from data
 ```
-Each column corresponds to the CV values calculated for each segmented cell in an individual image.
+Columns in `RAW` output corresponds to the CV values calculated for each segmented cell in an individual image.
+Columns in standard output file are grouped by `.lif` file 
 
 # Additional Outputs:
 `<directory>/dapi_seg/<img>_seg.png:`

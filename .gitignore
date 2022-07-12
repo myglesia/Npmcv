@@ -2,11 +2,10 @@
 #############
 .DS_Store
 .DS_Store?
-._*
 .Spotlight-V100
 .Trashes
-_*
 .vscode
+%*
 
 # Byte-compiled / optimized / DLL files
 #############
@@ -47,3 +46,7 @@ pip-delete-this-directory.txt
 # Jupyter Notebook
 #############
 .ipynb_checkpoints
+
+# Test
+#############
+.testimg/

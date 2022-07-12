@@ -1,58 +1,55 @@
 import sys
 import os
-#import re
 from itertools import zip_longest
+from collections import defaultdict
 
 import mahotas as mh
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-#from PIL import Image
 from scipy import stats
 from scipy import ndimage as ndi
-from skimage import exposure
-from skimage import color
+from skimage import exposure, color
 from skimage.util import img_as_float
 from skimage.measure import regionprops
 from skimage.filters import gaussian, threshold_li
-
-from collections import defaultdict
 from readlif.reader import LifFile
 
 
 
 def main(argv):
     '''npmcv <directory>
-    DAPI and NPM1 channels from a microscope image must be split into separate
-    single channel tif files and should be listed sequentially.
 
-    e.g. "Image01.dapi.tif", "Image01.npm.tif", "Image02.dapi.tif",
-    "Image02.npm.tif",...
+    where the directory contains a Lecia .lif images
+    This is also where the data is saved.
     '''
-    directory = argv[0]
-    # this is where everything will save
+    directory = argv['path']
     os.chdir(directory)
 
     lif_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".lif") and not f.startswith('.')]
+
+    if not lif_files: print("No LIF files found!")
 
     filecv = defaultdict(list)
     invcv = defaultdict(list)
     for lif in lif_files:
 
-        imgcv = liffr(lif)
-        # [('img', [CV]), ('img', [CV]), ... ]
+        imgcv = liffr(lif) # [('img', [CV]), ('img', [CV]), ... ]
 
         for k,v in imgcv:
             filecv[os.path.basename(lif)].extend(v)
             # {'file': [CVs], ...}
             invcv[k].extend(v)
             # {'img': [CVs], ...}
-    print(filecv)
 
     results, outliers = remove_outliers(filecv)
     # handling save files
-    exp_name = os.path.basename(os.path.abspath(directory))
+    # the name of the input folder
+    if argv['output']:
+        exp_name = os.path.basename(argv['output'])
+    else:
+        exp_name = os.path.basename(os.path.abspath(directory))
 
     def dtdf(d): return pd.DataFrame(
         dict([(k, pd.Series(v)) for k, v in d.items()]))
@@ -78,52 +75,28 @@ def liffr(file):
 
     # Create a list of images using a generator
     img_list = [i for i in new.get_iter_image()]
-    #results = {}
     results = []
     for img in img_list:
-        print(' {} '.format(img.name))
-        # Returns Pillow objects
-        ch_list = [i for i in img.get_iter_c(t=0, z=0)]
-        dapi = ch_list[0]
-        npm1 = ch_list[1]
-
         iname = os.path.splitext(fname)[0] + " " + img.name
+        print(' {} '.format(img.name))
+        try: # Check if image contains the correct number of channels
+            # Returns Pillow objects
+            ch_list = [i for i in img.get_iter_c(t=0, z=0)]
+            dapi = ch_list[0]
+            npm1 = ch_list[1]
+
+        except IndexError:
+            print('Incorrect number of channels in {}, skipping image...'.format(iname))
+            continue
+
         img_cv = sip(np.array(dapi), np.array(npm1), iname)
 
         # each image is a column of cv
         # [('img', [CV]), ('img', [CV]), ... ]
         results.append((iname, img_cv))
 
-        #results[iname] = img_cv
-
     #raw_results
     return results
-
-# def tif(img_files):
-#     '''Handles opening image files.
-
-#     Returns
-#     ---------
-#     raw results:    {'img': [CVs]}
-#     '''
-#     # Cursed regex
-#     PATTERN = re.compile(
-#         r"^HCP-\d-\d{4}-p-(?P<time>.*?)-(?P<treat>.*)-s(?P<slide>\d).*(?P<img>Image.*)_(?P<ch>ch\d{2}).tif")
-#     results = {}
-
-#     for dapi, npm1 in grouper(img_files, 2):
-#         with Image.open(dapi) as d, Image.open(npm1) as n:
-#             print(
-#                 '\x1b[4m' + 'Processing: {} '.format(os.path.basename(npm1)) + '\x1b[0m')
-#             raw_dapi = np.array(Image.open(dapi))
-#             raw_npm1 = np.array(Image.open(npm1))
-
-#             img_cv = sip(raw_dapi, raw_npm1, os.path.basename(npm1))
-#             # single image per column
-#             results[os.path.basename(npm1)] = img_cv
-
-#     return results
-
 
 def sip(raw_dapi, raw_npm1, name):
     '''Single image Processing - The Images are actually opened here

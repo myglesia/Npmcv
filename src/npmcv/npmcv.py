@@ -17,7 +17,6 @@ from skimage.filters import gaussian, threshold_li
 from readlif.reader import LifFile
 
 
-
 def main(argv):
     '''npmcv <directory>
 
@@ -27,17 +26,19 @@ def main(argv):
     directory = argv['path']
     os.chdir(directory)
 
-    lif_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".lif") and not f.startswith('.')]
+    lif_files = [os.path.join(directory, f) for f in os.listdir(
+        directory) if f.endswith(".lif") and not f.startswith('.')]
 
-    if not lif_files: print("No LIF files found!")
+    if not lif_files:
+        print("No LIF files found!")
 
     filecv = defaultdict(list)
     invcv = defaultdict(list)
     for lif in lif_files:
 
-        imgcv = liffr(lif) # [('img', [CV]), ('img', [CV]), ... ]
-
-        for k,v in imgcv:
+        # [('img', [CV]), ('img', [CV]), ... ]
+        imgcv = liffr(lif, save=argv['no_imgs'])
+        for k, v in imgcv:
             filecv[os.path.basename(lif)].extend(v)
             # {'file': [CVs], ...}
             invcv[k].extend(v)
@@ -46,8 +47,8 @@ def main(argv):
     results, outliers = remove_outliers(filecv)
     # handling save files
     # the name of the input folder
-    if argv['output']:
-        exp_name = os.path.basename(argv['output'])
+    if argv['name']:
+        exp_name = os.path.basename(argv['name'])
     else:
         exp_name = os.path.basename(os.path.abspath(directory))
 
@@ -66,7 +67,8 @@ def main(argv):
     print('\x1b[1;36m' + ' {n} '.format(n=str(sum(df.count()))) + '\x1b[0m' +
           'Total Cells Counted.')
 
-def liffr(file):
+
+def liffr(file, save=True):
     '''Processes a single .lif image.'''
 
     new = LifFile(file)
@@ -78,27 +80,28 @@ def liffr(file):
     results = []
     for img in img_list:
         iname = os.path.splitext(fname)[0] + " " + img.name
-        print(' {} '.format(img.name))
-        try: # Check if image contains the correct number of channels
+        print('\n     {} '.format(img.name))
+        try:  # Check if image contains the correct number of channels
             # Returns Pillow objects
             ch_list = [i for i in img.get_iter_c(t=0, z=0)]
             dapi = ch_list[0]
             npm1 = ch_list[1]
 
         except IndexError:
-            print('Incorrect number of channels in {}, skipping image...'.format(iname))
+            print('channel error, skipping {}...'.format(iname))
             continue
 
-        img_cv = sip(np.array(dapi), np.array(npm1), iname)
+        img_cv = sip(np.array(dapi), np.array(npm1), iname, save)
 
         # each image is a column of cv
         # [('img', [CV]), ('img', [CV]), ... ]
         results.append((iname, img_cv))
 
-    #raw_results
+    # Raw_results
     return results
 
-def sip(raw_dapi, raw_npm1, name):
+
+def sip(raw_dapi, raw_npm1, name, save=True):
     '''Single image Processing - The Images are actually opened here
 
     Returns
@@ -106,48 +109,37 @@ def sip(raw_dapi, raw_npm1, name):
         results:    list
             list of stats for one image
     '''
-    label = cell_segmentation(raw_dapi)
 
-    results = []
-    # no usuable cells
-    if label is None:
-        results.append(np.nan)
-    else:
-        raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
-        check(label, raw_npm1, name)
-        cells = img2cells(label, raw_npm1)
-        for i, (cell, mask) in enumerate(cells):
-            cv = stats.variation(cell[mask], axis=None)
-            verb(i, cell, mask, name)
-            results.append(cv)
-    return results
+    # Prepares a mask labeling each cell in the DAPI images, after
+    # removing artifacts and cells touching the edges.
 
-
-def cell_segmentation(img):
-    '''Prepares a mask labeling each cell in the DAPI images,
-    removing artifacts and cells touching the edges.
-
-    Returns
-    -------
-    cleaned:    label
-        labeled binary image for a single slide
-    '''
     # Li Threshold...
-    im = gaussian(img_as_float(img), sigma=1)  # time!
+    im = gaussian(img_as_float(raw_dapi), sigma=1)  # time!
     bin_image = (im > threshold_li(im))
     labeled, nr_objects = mh.label(bin_image)
 
     # NOTE Change these values first
-    cleaned, n_left = mh.labeled.filter_labeled(
+    d_label, n_left = mh.labeled.filter_labeled(
         labeled, remove_bordering=True, min_size=10000, max_size=30000)
 
-    print('\nNumber of cells counted: ' +
+    print('Number of cells counted: ' +
           '\x1b[3;31m' + '{}'.format(n_left) + '\x1b[0m')
 
+    results = []
     if n_left == 0:
-        return None
+        # no usuable cells
+        results.append(np.nan)
     else:
-        return cleaned
+        raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
+        if save:
+            check(d_label, raw_npm1, name)
+        cells = img2cells(d_label, raw_npm1)
+        for i, (cell, mask) in enumerate(cells):
+            cv = stats.variation(cell[mask], axis=None)
+            if save:
+                verb(i, cell, mask, name)
+            results.append(cv)
+    return results
 
 
 def verb(i, cell, mask, name):
@@ -158,7 +150,7 @@ def verb(i, cell, mask, name):
 
     os.makedirs('inv_cells', exist_ok=True)
     plt.imsave(os.path.join(os.getcwd(), 'inv_cells',
-               '{0}_cell{1}.png'.format(name, i)), img)
+                            '{0}_cell{1}.png'.format(name, i)), img)
 
 
 def check(label, img, name):
@@ -173,7 +165,7 @@ def check(label, img, name):
     os.makedirs('dapi_seg', exist_ok=True)
     newname = os.path.join(os.getcwd(), 'dapi_seg', '{0}_seg.png'.format(name))
     plt.imsave(os.path.join(os.getcwd(), 'dapi_seg',
-               '{0}_seg.png'.format(name)), rgbimg)
+                            '{0}_seg.png'.format(name)), rgbimg)
 
     print('\nSegmentation Image saved: ' +
           '\x1b[4m' + '{}\n'.format(newname) + '\x1b[0m')
@@ -258,7 +250,3 @@ def grubbs(X, alpha=0.05):
         N = len(X)
 
     return X, outliers
-
-
-if __name__ == '__main__':
-    main(sys.argv)

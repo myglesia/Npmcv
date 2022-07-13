@@ -1,4 +1,4 @@
 
 from .npmcv import main
 
-__version__ = '2.0.15.20220712'
+__version__ = '2.1.3'

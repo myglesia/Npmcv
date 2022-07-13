@@ -8,7 +8,7 @@ A Python script for segmenting cells in microscope images and calculating the co
 Download the latest `.whl` package from the release page and install with `pip`
 
 ```
-$ pip install npmcv-2.0.28.whl
+$ pip install npmcv-2.1.3.whl
 ```
 
 Alternatively you can build the package yourself from the source with `python -m build`

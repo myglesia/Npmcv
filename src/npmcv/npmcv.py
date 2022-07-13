@@ -1,56 +1,63 @@
-#!/usr/bin/env python3
 import sys
 import os
-import re
 from itertools import zip_longest
+from collections import defaultdict
 
 import mahotas as mh
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from PIL import Image
 from scipy import stats
 from scipy import ndimage as ndi
-from skimage import exposure
-from skimage import color
+from skimage import exposure, color
 from skimage.util import img_as_float
 from skimage.measure import regionprops
 from skimage.filters import gaussian, threshold_li
+from readlif.reader import LifFile
 
 
 def main(argv):
     '''npmcv <directory>
-    DAPI and NPM1 channels from a microscope image must be split into separate
-    single channel tif files and should be listed sequentially.
 
-    e.g. "Image01.dapi.tif", "Image01.npm.tif", "Image02.dapi.tif",
-    "Image02.npm.tif",...
+    where the directory contains a Lecia .lif images
+    This is also where the data is saved.
     '''
-    directory = argv[0]
-    # this is where everything will save
+    directory = argv['path']
     os.chdir(directory)
 
-    # file list sorted alphabetically, case-insensitive
-    # Like:
-    #   ActD.lif - Image002_ch01.tif
-    #   ActD.lif - Image002_ch02.tif
-    img_files = sorted([os.path.join(directory, f) for f in os.listdir(directory)
-                        if f.endswith(".tif") and not f.startswith('.')], key=lambda f: f.lower())
+    lif_files = [os.path.join(directory, f) for f in os.listdir(
+        directory) if f.endswith(".lif") and not f.startswith('.')]
 
-    raw_results = tif(img_files)
+    if not lif_files:
+        print("No LIF files found!")
 
-    results, outliers = remove_outliers(raw_results)
+    filecv = defaultdict(list)
+    invcv = defaultdict(list)
+    for lif in lif_files:
 
+        # [('img', [CV]), ('img', [CV]), ... ]
+        imgcv = liffr(lif, save=argv['no_imgs'])
+        for k, v in imgcv:
+            filecv[os.path.basename(lif)].extend(v)
+            # {'file': [CVs], ...}
+            invcv[k].extend(v)
+            # {'img': [CVs], ...}
+
+    results, outliers = remove_outliers(filecv)
     # handling save files
-    exp_name = os.path.basename(os.path.abspath(directory))
+    # the name of the input folder
+    if argv['name']:
+        exp_name = os.path.basename(argv['name'])
+    else:
+        exp_name = os.path.basename(os.path.abspath(directory))
 
     def dtdf(d): return pd.DataFrame(
         dict([(k, pd.Series(v)) for k, v in d.items()]))
 
     df = dtdf(results)
     dtdf(results).to_csv('{}.csv'.format(exp_name), index=False)
-    dtdf(raw_results).to_csv('{}_RAW.csv'.format(exp_name), index=False)
+    dtdf(invcv).to_csv('{}_RAW.csv'.format(exp_name), index=False)
     dtdf(outliers).to_csv('{}_OUT.csv'.format(exp_name), index=False)
 
     # Final Stats
@@ -61,33 +68,40 @@ def main(argv):
           'Total Cells Counted.')
 
 
-def tif(img_files):
-    '''Handles opening image files.
+def liffr(file, save=True):
+    '''Processes a single .lif image.'''
 
-    Returns
-    ---------
-    raw results:    {'img': [CVs]}
-    '''
-    # Cursed regex
-    PATTERN = re.compile(
-        r"^HCP-\d-\d{4}-p-(?P<time>.*?)-(?P<treat>.*)-s(?P<slide>\d).*(?P<img>Image.*)_(?P<ch>ch\d{2}).tif")
-    results = {}
+    new = LifFile(file)
+    fname = os.path.basename(new.filename)
+    print('\x1b[4m' + 'Processing: {} '.format(fname) + '\x1b[0m')
 
-    for dapi, npm1 in grouper(img_files, 2):
-        with Image.open(dapi) as d, Image.open(npm1) as n:
-            print(
-                '\x1b[4m' + 'Processing: {} '.format(os.path.basename(npm1)) + '\x1b[0m')
-            raw_dapi = np.array(Image.open(dapi))
-            raw_npm1 = np.array(Image.open(npm1))
+    # Create a list of images using a generator
+    img_list = [i for i in new.get_iter_image()]
+    results = []
+    for img in img_list:
+        iname = os.path.splitext(fname)[0] + " " + img.name
+        print('\n     {} '.format(img.name))
+        try:  # Check if image contains the correct number of channels
+            # Returns Pillow objects
+            ch_list = [i for i in img.get_iter_c(t=0, z=0)]
+            dapi = ch_list[0]
+            npm1 = ch_list[1]
 
-            img_cv = sip(raw_dapi, raw_npm1, os.path.basename(npm1))
-            # single image per column
-            results[os.path.basename(npm1)] = img_cv
+        except IndexError:
+            print('channel error, skipping {}...'.format(iname))
+            continue
 
+        img_cv = sip(np.array(dapi), np.array(npm1), iname, save)
+
+        # each image is a column of cv
+        # [('img', [CV]), ('img', [CV]), ... ]
+        results.append((iname, img_cv))
+
+    # Raw_results
     return results
 
 
-def sip(raw_dapi, raw_npm1, name):
+def sip(raw_dapi, raw_npm1, name, save=True):
     '''Single image Processing - The Images are actually opened here
 
     Returns
@@ -95,48 +109,37 @@ def sip(raw_dapi, raw_npm1, name):
         results:    list
             list of stats for one image
     '''
-    label = cell_segmentation(raw_dapi)
 
-    results = []
-    # no usuable cells
-    if label is None:
-        results.append(np.nan)
-    else:
-        raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
-        check(label, raw_npm1, name)
-        cells = img2cells(label, raw_npm1)
-        for i, (cell, mask) in enumerate(cells):
-            cv = stats.variation(cell[mask], axis=None)
-            verb(i, cell, mask, name)
-            results.append(cv)
-    return results
+    # Prepares a mask labeling each cell in the DAPI images, after
+    # removing artifacts and cells touching the edges.
 
-
-def cell_segmentation(img):
-    '''Prepares a mask labeling each cell in the DAPI images,
-    removing artifacts and cells touching the edges.
-
-    Returns
-    -------
-    cleaned:    label
-        labeled binary image for a single slide
-    '''
     # Li Threshold...
-    im = gaussian(img_as_float(img), sigma=1)  # time!
+    im = gaussian(img_as_float(raw_dapi), sigma=1)  # time!
     bin_image = (im > threshold_li(im))
     labeled, nr_objects = mh.label(bin_image)
 
     # NOTE Change these values first
-    cleaned, n_left = mh.labeled.filter_labeled(
+    d_label, n_left = mh.labeled.filter_labeled(
         labeled, remove_bordering=True, min_size=10000, max_size=30000)
 
-    print('\nNumber of cells counted: ' +
+    print('Number of cells counted: ' +
           '\x1b[3;31m' + '{}'.format(n_left) + '\x1b[0m')
 
+    results = []
     if n_left == 0:
-        return None
+        # no usuable cells
+        results.append(np.nan)
     else:
-        return cleaned
+        raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
+        if save:
+            check(d_label, raw_npm1, name)
+        cells = img2cells(d_label, raw_npm1)
+        for i, (cell, mask) in enumerate(cells):
+            cv = stats.variation(cell[mask], axis=None)
+            if save:
+                verb(i, cell, mask, name)
+            results.append(cv)
+    return results
 
 
 def verb(i, cell, mask, name):
@@ -147,7 +150,7 @@ def verb(i, cell, mask, name):
 
     os.makedirs('inv_cells', exist_ok=True)
     plt.imsave(os.path.join(os.getcwd(), 'inv_cells',
-               '{0}_cell{1}.png'.format(name, i)), img)
+                            '{0}_cell{1}.png'.format(name, i)), img)
 
 
 def check(label, img, name):
@@ -162,7 +165,7 @@ def check(label, img, name):
     os.makedirs('dapi_seg', exist_ok=True)
     newname = os.path.join(os.getcwd(), 'dapi_seg', '{0}_seg.png'.format(name))
     plt.imsave(os.path.join(os.getcwd(), 'dapi_seg',
-               '{0}_seg.png'.format(name)), rgbimg)
+                            '{0}_seg.png'.format(name)), rgbimg)
 
     print('\nSegmentation Image saved: ' +
           '\x1b[4m' + '{}\n'.format(newname) + '\x1b[0m')
@@ -198,6 +201,7 @@ def grouper(iterable, n, fillvalue=None):
 
 
 def remove_outliers(results):
+    '''results:    {'img': [CVs]}'''
     clean_results = {}
     outliers = {}
     for key, val in results.items():
@@ -246,7 +250,3 @@ def grubbs(X, alpha=0.05):
         N = len(X)
 
     return X, outliers
-
-
-if __name__ == '__main__':
-    main(sys.argv)

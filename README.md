@@ -4,34 +4,48 @@ A Python script for segmenting cells in microscope images and calculating the co
 
 ## Installation
 
-Windows
-```
-$ python -m build
-$ pip install
-```
-Mac
-```
-$ python setup.py build
-$ python3 setup.py install 
-```
-## How to use
+
+Download the latest `.whl` package from the release page and install with `pip`
 
 ```
-Usage:
-    npmcv [<directory>...]
+$ pip install npmcv-2.0.28.whl
 ```
-where <directory> is a one or more folders containing `.lif` images.
+
+Alternatively you can build the package yourself from the source with `python -m build`
+
+
+
+## How to Use
 
 ```
-Outputs:
-   <directory>.csv:     output file
-   <directory>_RAW.csv: output data without outliners removed  
-   <directory>_OUT.csv: the outliners removed from data
+usage: npmcv [-h] [-D] [-n [NAME]] [-V] <path>
+
+positional arguments:
+  <path>                directory containing lif images
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -D, --no_imgs         Don't save overlays and individual cell images
+  -n [NAME], --name [NAME]
+                        Set basename for the output files
+  -V, --version         show program's version number and exit
 ```
+
+
+The script generates several output files
+```
+   NAME.csv:     cleaned output file
+   NAME_RAW.csv: output data without outliners removed  
+   NAME_OUT.csv: the outliners removed from data
+```
+By default the output files will be named after the input folder.
 Columns in `RAW` output corresponds to the CV values calculated for each segmented cell in an individual image.
 Columns in standard output file are grouped by `.lif` file 
 
-# Additional Outputs:
+# Additional Image Outputs:
+
+By default the program will save processed cell images to verify segmentation.
+
 `<directory>/dapi_seg/<img>_seg.png:`
 
 Generates an image overlaying the cell segmentation on the original image

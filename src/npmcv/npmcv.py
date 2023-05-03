@@ -3,7 +3,6 @@ import os
 from itertools import zip_longest
 from collections import defaultdict
 
-import mahotas as mh
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,8 +11,10 @@ from scipy import stats
 from scipy import ndimage as ndi
 from skimage import exposure, color
 from skimage.util import img_as_float
-from skimage.measure import regionprops
-from skimage.filters import gaussian, threshold_li
+from skimage.segmentation import clear_border, watershed
+from skimage.measure import label, regionprops
+from skimage.filters import gaussian, threshold_otsu
+from skimage.morphology import opening, disk
 from readlif.reader import LifFile
 
 
@@ -23,7 +24,7 @@ def main(argv):
     where the directory contains a Lecia .lif images
     This is also where the data is saved.
     '''
-    directory = argv['path']
+    directory = os.path.dirname(argv['path'])
     os.chdir(directory)
 
     lif_files = [os.path.join(directory, f) for f in os.listdir(
@@ -73,22 +74,22 @@ def liffr(file, save=True):
 
     new = LifFile(file)
     fname = os.path.basename(new.filename)
-    print('\x1b[4m' + 'Processing: {} '.format(fname) + '\x1b[0m')
+    print('\n\x1b[4m' + 'Working on... {} '.format(fname) + '\x1b[0m')
 
-    # Create a list of images using a generator
+    # Create a list of images in Lif file using a generator
     img_list = [i for i in new.get_iter_image()]
     results = []
     for img in img_list:
         iname = os.path.splitext(fname)[0] + " " + img.name
-        print('\n     {} '.format(img.name))
-        try:  # Check if image contains the correct number of channels
-            # Returns Pillow objects
-            ch_list = [i for i in img.get_iter_c(t=0, z=0)]
+        print('\n   Processing: {}'.format(img.name))
+        try:  
+            # Check if image contains the correct number of channels
+            ch_list = [i for i in img.get_iter_c(t=0, z=0)] # Returns Pillow objects
             dapi = ch_list[0]
             npm1 = ch_list[1]
 
         except IndexError:
-            print('channel error, skipping {}...'.format(iname))
+            print('incorrect number of channels, skipping {}...'.format(iname))
             continue
 
         img_cv = sip(np.array(dapi), np.array(npm1), iname, save)
@@ -102,7 +103,7 @@ def liffr(file, save=True):
 
 
 def sip(raw_dapi, raw_npm1, name, save=True):
-    '''Single image Processing - The Images are actually opened here
+    '''Single image Processing - The Images are actually processed here
 
     Returns
     -------
@@ -113,14 +114,37 @@ def sip(raw_dapi, raw_npm1, name, save=True):
     # Prepares a mask labeling each cell in the DAPI images, after
     # removing artifacts and cells touching the edges.
 
+    smooth = gaussian(raw_dapi, sigma=1.2)
+    smooth = opening(smooth, disk(20))
+
+    thresh = (smooth > threshold_otsu(smooth))
+    fill = ndi.binary_fill_holes(thresh)
+
+    # Identify some background and foreground pixels from the intensity values.
+    # These pixels are used as seeds for watershed.
+    markers = np.zeros_like(smooth)
+    foreground, background = 1, 2
+    markers[fill == True] = foreground
+    markers[fill == False] = background
+
+    ws = watershed(smooth, markers)
+
+
+    # remove artifacts connected to image border and label image regions
+    label_image = label(clear_border(ws) == foreground)
+
     # Li Threshold...
-    im = gaussian(img_as_float(raw_dapi), sigma=1)  # time!
-    bin_image = (im > threshold_li(im))
-    labeled, nr_objects = mh.label(bin_image)
+    #im = gaussian(img_as_float(raw_dapi), sigma=1)  # time!
+
+    #bin_image = (im > threshold_li(im))
+
+    #labeled, nr_objects = mh.label(bin_image)
 
     # NOTE Change these values first
-    d_label, n_left = mh.labeled.filter_labeled(
-        labeled, remove_bordering=True, min_size=10000, max_size=30000)
+    #d_label, n_left = mh.labeled.filter_labeled(
+    #    labeled, remove_bordering=True, min_size=10000, max_size=30000)
+
+    d_label, n_left = clear_size(label_image)
 
     print('Number of cells counted: ' +
           '\x1b[3;31m' + '{}'.format(n_left) + '\x1b[0m')
@@ -167,7 +191,7 @@ def check(label, img, name):
     plt.imsave(os.path.join(os.getcwd(), 'dapi_seg',
                             '{0}_seg.png'.format(name)), rgbimg)
 
-    print('\nSegmentation Image saved: ' +
+    print('Segmentation Image saved: ' +
           '\x1b[4m' + '{}\n'.format(newname) + '\x1b[0m')
 
 
@@ -190,6 +214,38 @@ def img2cells(labeled, npm):
 
     return zip(cropped_img, cropped_bin)
 
+def clear_size(labeled_img, min_size=10000, max_size=28000):
+
+    # Re-label, in case we are dealing with a binary out
+    # and to get consistent labeling
+    nlabels, number = label(labeled_img, background=0, return_num=True)
+    
+    ##########
+    # determine all objects that are connected to borders
+    # multiplying 'labels[boarders]' gives list of 'true' or boarder elements in array 
+    # because we're dealing with labels, the array value represents a unqiue 'label number'.
+    #borders_indices = np.unique(nlabels[borders]) # list of labels connected to border (including 0)
+    ##########
+    borders_indices = []
+    for region in regionprops(nlabels):
+        if region.area >= max_size or region.area < min_size:
+            borders_indices.append(region.label)
+    ##########
+    indices = np.arange(number + 1)  # background or 0 does not count as a label in regionprop 'number' 
+
+    # mask all label indices that are connected to borders
+    # returns an array 'label_mask' as True at position of labels touching boarder
+    label_mask = np.isin(indices, np.unique(borders_indices))
+
+    # create mask for pixels to clear
+    # labels.reshape(-1)) -  flattens the label array
+    # .reshape(labels.shape) - makes it original shape again
+    mask = label_mask[nlabels.reshape(-1)].reshape(nlabels.shape)
+    # clear masked pixels
+    nlabels[mask] = 0
+    #relabel again
+    out, nleft = label(nlabels, background=0, return_num=True)
+    return out, nleft
 
 # Utility and stats functions
 def grouper(iterable, n, fillvalue=None):

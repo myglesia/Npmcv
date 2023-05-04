@@ -1,4 +1,3 @@
-import sys
 import os
 from itertools import zip_longest
 from collections import defaultdict
@@ -9,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from scipy import stats
 from scipy import ndimage as ndi
+
 from skimage import exposure, color
 from skimage.util import img_as_float
 from skimage.segmentation import clear_border, watershed
@@ -24,6 +24,7 @@ def main(argv):
     where the directory contains a Lecia .lif images
     This is also where the data is saved.
     '''
+    # Still kinda broken 
     directory = os.path.dirname(argv['path'])
     os.chdir(directory)
 
@@ -35,19 +36,19 @@ def main(argv):
 
     filecv = defaultdict(list)
     invcv = defaultdict(list)
-    for lif in lif_files:
 
-        # [('img', [CV]), ('img', [CV]), ... ]
+    # [('img', [CVs]), ('img', [CVs]), ... ]
+    for lif in lif_files:
         imgcv = liffr(lif, save=argv['no_imgs'])
         for k, v in imgcv:
-            filecv[os.path.basename(lif)].extend(v)
             # {'file': [CVs], ...}
-            invcv[k].extend(v)
+            filecv[os.path.basename(lif)].extend(v)
             # {'img': [CVs], ...}
+            invcv[k].extend(v)
 
     results, outliers = remove_outliers(filecv)
+    
     # handling save files
-    # the name of the input folder
     if argv['name']:
         exp_name = os.path.basename(argv['name'])
     else:
@@ -133,17 +134,7 @@ def sip(raw_dapi, raw_npm1, name, save=True):
     # remove artifacts connected to image border and label image regions
     label_image = label(clear_border(ws) == foreground)
 
-    # Li Threshold...
-    #im = gaussian(img_as_float(raw_dapi), sigma=1)  # time!
-
-    #bin_image = (im > threshold_li(im))
-
-    #labeled, nr_objects = mh.label(bin_image)
-
-    # NOTE Change these values first
-    #d_label, n_left = mh.labeled.filter_labeled(
-    #    labeled, remove_bordering=True, min_size=10000, max_size=30000)
-
+    # remove labels that are too large or too small (based on pixel area)
     d_label, n_left = clear_size(label_image)
 
     print('Number of cells counted: ' +
@@ -178,8 +169,7 @@ def verb(i, cell, mask, name):
 
 
 def check(label, img, name):
-    '''
-    Quality check for dapi segmentation:
+    '''Quality check for dapi segmentation:
         Overlays the dapi segmentation onto full npm image
     '''
 
@@ -215,43 +205,40 @@ def img2cells(labeled, npm):
     return zip(cropped_img, cropped_bin)
 
 def clear_size(labeled_img, min_size=10000, max_size=28000):
+    '''Removes labels outside of the min/max area size. 
+
+    Returns
+    -------
+        out:   relabeled image, array-like  
+        nleft:  number of remaining labels (cells)
+    '''
 
     # Re-label, in case we are dealing with a binary out
-    # and to get consistent labeling
     nlabels, number = label(labeled_img, background=0, return_num=True)
     
-    ##########
-    # determine all objects that are connected to borders
-    # multiplying 'labels[boarders]' gives list of 'true' or boarder elements in array 
-    # because we're dealing with labels, the array value represents a unqiue 'label number'.
-    #borders_indices = np.unique(nlabels[borders]) # list of labels connected to border (including 0)
-    ##########
-    borders_indices = []
+    borders_indices = [] # list of labels outside area range.
     for region in regionprops(nlabels):
         if region.area >= max_size or region.area < min_size:
             borders_indices.append(region.label)
-    ##########
-    indices = np.arange(number + 1)  # background or 0 does not count as a label in regionprop 'number' 
+    indices = np.arange(number + 1)  # background or 0 does not count as a label in regionprop
 
-    # mask all label indices that are connected to borders
-    # returns an array 'label_mask' as True at position of labels touching boarder
+    # returns an array 'label_mask' as True at position of labels outside area range
     label_mask = np.isin(indices, np.unique(borders_indices))
-
     # create mask for pixels to clear
-    # labels.reshape(-1)) -  flattens the label array
-    # .reshape(labels.shape) - makes it original shape again
     mask = label_mask[nlabels.reshape(-1)].reshape(nlabels.shape)
-    # clear masked pixels
     nlabels[mask] = 0
-    #relabel again
+
+    #re-label image
     out, nleft = label(nlabels, background=0, return_num=True)
     return out, nleft
 
 # Utility and stats functions
 def grouper(iterable, n, fillvalue=None):
     '''Collect data into fixed-length chunks or blocks
-    grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx'''
-    # Adapted from: https://docs.python.org/3/library/itertools.html
+    grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx
+
+    Adapted from: https://docs.python.org/3/library/itertools.html
+    '''
     args = [iter(iterable)] * n
     return zip_longest(*args, fillvalue=fillvalue)
 

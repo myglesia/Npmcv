@@ -5,13 +5,13 @@
 .Spotlight-V100
 .Trashes
 .vscode
+.ipynb_checkpoints
 
 # Byte-compiled / optimized / DLL files
 #############
 __pycache__/
 *.py[cod]
 *$py.class
-
 
 # Distribution / packaging
 #############
@@ -41,11 +41,6 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
-
-# Jupyter Notebook
-#############
-.ipynb_checkpoints
-
-# Test
+# Test Files
 #############
 testimg/

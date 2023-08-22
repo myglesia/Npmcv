@@ -21,7 +21,6 @@ def run():
     # start timer
     t = time.process_time()
     npmcv.main(vars(args))
-
     elapsed_min = int((time.process_time() - t) / 60)
     elapsed_sec = int((time.process_time() - t) % 60)
     print('\x1b[1;32m' +

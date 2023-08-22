@@ -24,8 +24,7 @@ def main(argv):
     where the directory contains a Lecia .lif images
     This is also where the data is saved.
     '''
-    # Still kinda broken 
-    directory = os.path.dirname(argv['path'])
+    directory = os.path.abspath(argv['path'])
     os.chdir(directory)
 
     lif_files = [os.path.join(directory, f) for f in os.listdir(
@@ -130,7 +129,6 @@ def sip(raw_dapi, raw_npm1, name, save=True):
 
     ws = watershed(smooth, markers)
 
-
     # remove artifacts connected to image border and label image regions
     label_image = label(clear_border(ws) == foreground)
 
@@ -204,7 +202,7 @@ def img2cells(labeled, npm):
 
     return zip(cropped_img, cropped_bin)
 
-def clear_size(labeled_img, min_size=10000, max_size=28000):
+def clear_size(labeled_img, min_size=10000, max_size=76000):
     '''Removes labels outside of the min/max area size. 
 
     Returns
@@ -220,7 +218,7 @@ def clear_size(labeled_img, min_size=10000, max_size=28000):
     for region in regionprops(nlabels):
         if region.area >= max_size or region.area < min_size:
             borders_indices.append(region.label)
-    indices = np.arange(number + 1)  # background or 0 does not count as a label in regionprop
+    indices = np.arange(number + 1)  # 0 (background) is not counted as a label in regionprop
 
     # returns an array 'label_mask' as True at position of labels outside area range
     label_mask = np.isin(indices, np.unique(borders_indices))

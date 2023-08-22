@@ -1,4 +1,4 @@
 
 from .npmcv import main
 
-__version__ = '3.2.2'
+__version__ = '3.3.3'

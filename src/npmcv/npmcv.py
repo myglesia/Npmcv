@@ -38,7 +38,7 @@ def main(argv):
 
     # [('img', [CVs]), ('img', [CVs]), ... ]
     for lif in lif_files:
-        imgcv = liffr(lif, save=argv['no_imgs'])
+        imgcv = liffr(lif, argv) 
         for k, v in imgcv:
             # {'file': [CVs], ...}
             filecv[os.path.basename(lif)].extend(v)
@@ -69,8 +69,10 @@ def main(argv):
           'Total Cells Counted.')
 
 
-def liffr(file, save=True):
+def liffr(file, argv):
     '''Processes a single .lif image.'''
+
+    save=argv['no_imgs']
 
     lif_img = LifFile(file)
     fname = os.path.basename(lif_img.filename)
@@ -94,7 +96,7 @@ def liffr(file, save=True):
             print('incorrect number of channels, skipping {}...'.format(iname))
             continue
 
-        img_cv = sip(np.array(dapi), np.array(npm1), iname, save)
+        img_cv = sip(np.array(dapi), np.array(npm1), iname, argv)
 
         # each image is a column of cv
         # [('img', [CV]), ('img', [CV]), ... ]
@@ -104,7 +106,7 @@ def liffr(file, save=True):
     return results
 
 
-def sip(raw_dapi, raw_npm1, name, save=True):
+def sip(raw_dapi, raw_npm1, name, argv):
     '''Single image Processing - The Images are actually processed here
 
     Returns
@@ -135,11 +137,12 @@ def sip(raw_dapi, raw_npm1, name, save=True):
     label_image = label(clear_border(ws) == foreground)
 
     # remove labels that are too large or too small (based on pixel area)
-    d_label, n_left = clear_size(label_image)
+    d_label, n_left = clear_size(label_image, argv)
 
     print('    Number of cells counted: ' +
           '\x1b[3;32m' + '{}'.format(n_left) + '\x1b[0m')
 
+    save=argv['no_imgs']
     results = []
     if n_left == 0:
         # no usuable cells
@@ -204,7 +207,7 @@ def img2cells(labeled, npm):
 
     return zip(cropped_img, cropped_bin)
 
-def clear_size(labeled_img, min_size=10000, max_size=30000):
+def clear_size(labeled_img, argv):
     '''Removes labels outside of the min/max area size. 
 
     Returns
@@ -212,7 +215,8 @@ def clear_size(labeled_img, min_size=10000, max_size=30000):
         out:   relabeled image, array-like  
         nleft:  number of remaining labels (cells)
     '''
-
+    min_size=argv['min_size']
+    max_size=argv['max_size']
     # Re-label, in case we are dealing with a binary out
     nlabels, number = label(labeled_img, background=0, return_num=True)
     

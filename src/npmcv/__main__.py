@@ -14,6 +14,10 @@ def run():
                         nargs='?', help='Set basename for the output files')
     parser.add_argument('-V', '--version', action='version',
                         version='npmcv version: {}'.format(npmcv.__version__))
+    parser.add_argument('--min_size', default=10000, type=int, nargs='?', 
+                        help='min area of cells to include, in pixels')
+    parser.add_argument('--max_size', default=30000, type=int, nargs='?', 
+                        help='max area of cells to include, in pixels')
     parser.add_argument('path', type=str, metavar='<path>',
                         help='directory containing lif images')
 

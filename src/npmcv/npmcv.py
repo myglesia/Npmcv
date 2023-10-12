@@ -72,16 +72,18 @@ def main(argv):
 def liffr(file, save=True):
     '''Processes a single .lif image.'''
 
-    new = LifFile(file)
-    fname = os.path.basename(new.filename)
+    lif_img = LifFile(file)
+    fname = os.path.basename(lif_img.filename)
     print('\n\x1b[4m' + 'Working on... {} '.format(fname) + '\x1b[0m')
 
     # Create a list of images in Lif file using a generator
-    img_list = [i for i in new.get_iter_image()]
+    img_list = [i for i in lif_img.get_iter_image()]
     results = []
     for img in img_list:
         iname = os.path.splitext(fname)[0] + " " + img.name
-        print('\n   Processing: {}'.format(img.name))
+        print('\n    Processing: {} '.format(img.name))
+        if img.bit_depth[0] < 16:
+            print('\x1b[1;31m' + '    Warning {}-bit image.'.format(img.bit_depth[0]) + '\x1b[0m')
         try:  
             # Check if image contains the correct number of channels
             ch_list = [i for i in img.get_iter_c(t=0, z=0)] # Returns Pillow objects
@@ -135,15 +137,15 @@ def sip(raw_dapi, raw_npm1, name, save=True):
     # remove labels that are too large or too small (based on pixel area)
     d_label, n_left = clear_size(label_image)
 
-    print('Number of cells counted: ' +
-          '\x1b[3;31m' + '{}'.format(n_left) + '\x1b[0m')
+    print('    Number of cells counted: ' +
+          '\x1b[3;32m' + '{}'.format(n_left) + '\x1b[0m')
 
     results = []
     if n_left == 0:
         # no usuable cells
         results.append(np.nan)
     else:
-        raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
+        #raw_npm1 = exposure.rescale_intensity(img_as_float(raw_npm1))
         if save:
             check(d_label, raw_npm1, name)
         cells = img2cells(d_label, raw_npm1)
@@ -179,7 +181,7 @@ def check(label, img, name):
     plt.imsave(os.path.join(os.getcwd(), 'dapi_seg',
                             '{0}_seg.png'.format(name)), rgbimg)
 
-    print('Segmentation Image saved: ' +
+    print('    Segmentation Image saved: ' +
           '\x1b[4m' + '{}\n'.format(newname) + '\x1b[0m')
 
 
@@ -202,7 +204,7 @@ def img2cells(labeled, npm):
 
     return zip(cropped_img, cropped_bin)
 
-def clear_size(labeled_img, min_size=10000, max_size=76000):
+def clear_size(labeled_img, min_size=10000, max_size=30000):
     '''Removes labels outside of the min/max area size. 
 
     Returns

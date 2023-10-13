@@ -25,6 +25,7 @@ def main(argv):
     This is also where the data is saved.
     '''
     directory = os.path.abspath(argv['path'])
+
     os.chdir(directory)
 
     lif_files = [os.path.join(directory, f) for f in os.listdir(
@@ -108,6 +109,7 @@ def liffr(file, argv):
 
 def sip(raw_dapi, raw_npm1, name, argv):
     '''Single image Processing - The Images are actually processed here
+
 
     Returns
     -------

@@ -14,16 +14,21 @@ def run():
                         nargs='?', help='Set basename for the output files')
     parser.add_argument('-V', '--version', action='version',
                         version='npmcv version: {}'.format(npmcv.__version__))
+    parser.add_argument('--min_size', default=10000, type=int, nargs='?', 
+                        help='min area of cells to include, in pixels')
+    parser.add_argument('--max_size', default=30000, type=int, nargs='?', 
+                        help='max area of cells to include, in pixels')
     parser.add_argument('path', type=str, metavar='<path>',
                         help='directory containing lif images')
 
     args = parser.parse_args()
-
+    # start timer
     t = time.process_time()
     npmcv.main(vars(args))
-    elapsed_time = (time.process_time() - t) / 60
+    elapsed_min = int((time.process_time() - t) / 60)
+    elapsed_sec = int((time.process_time() - t) % 60)
     print('\x1b[1;32m' +
-          'Total Runtime: {:.4} mins.'.format(elapsed_time) + '\x1b[0m \n')
+          'Total Runtime: {} mins and {} secs.'.format(elapsed_min, elapsed_sec) + '\x1b[0m \n')
 
 
 if __name__ == '__main__':
